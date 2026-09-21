@@ -881,5 +881,263 @@
 })();
 </script>
 <!-- ==================== HẾT PHẦN THÊM MỚI ==================== -->
+  <!-- ============ PHẦN THÊM MỚI — Dán trước </body> ============ -->
+<style>
+  #hsdAlertBanner{
+    position:fixed;top:10px;left:10px;right:10px;
+    background:#fff3cd;color:#92400e;border:2px solid #f59e0b;
+    border-radius:14px;padding:10px 14px;font-weight:800;font-size:13px;
+    z-index:9998;display:none;cursor:pointer;text-align:center;line-height:1.5;
+    box-shadow:0 6px 20px rgba(0,0,0,0.15);
+  }
+  #hsdAlertBanner.danger{background:#ffe4e6;color:#9f1239;border-color:#fb7185;}
+
+  #hsdFloatBtn{
+    position:fixed;bottom:20px;right:20px;width:54px;height:54px;
+    border-radius:50%;background:#5ab078;color:#fff;border:3px solid #fff;
+    box-shadow:0 6px 20px rgba(90,176,120,0.5);font-size:22px;
+    display:flex;align-items:center;justify-content:center;
+    z-index:9997;cursor:pointer;
+  }
+  #hsdFloatBtn .hsdBadge{
+    position:absolute;top:-4px;right:-4px;background:#ff6b6b;color:#fff;
+    font-size:11px;font-weight:900;min-width:20px;height:20px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;padding:0 5px;
+    border:2px solid #fff;
+  }
+
+  #hsdSaveBtn{
+    display:none;width:100%;margin-top:8px;padding:10px 18px;
+    background:#0284c7;color:#fff;border:none;border-radius:14px;
+    font-weight:800;font-size:14px;font-family:inherit;cursor:pointer;
+    box-shadow:0 4px 12px rgba(2,132,199,0.35);
+  }
+
+  #hsdModal{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(30,50,40,0.5);z-index:9999;display:none;
+    align-items:flex-end;justify-content:center;
+  }
+  #hsdModal.open{display:flex;}
+  #hsdModalContent{
+    background:#fff;width:100%;max-width:500px;max-height:82vh;
+    border-radius:24px 24px 0 0;padding:18px;overflow-y:auto;
+    border:2px solid #d4edd9;border-bottom:none;
+  }
+  .hsdModalHeader{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .hsdModalHeader h2{font-size:18px;color:#3b8754;margin:0;font-weight:900;}
+  .hsdCloseBtn{
+    background:#ffe4e6;color:#e11d48;border:none;width:34px;height:34px;
+    border-radius:50%;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;
+  }
+  .hsdItem{
+    background:#f7fdf8;border:2px solid #d4edd9;border-radius:16px;
+    padding:12px;margin-bottom:10px;position:relative;
+  }
+  .hsdItem.expired{background:#ffe4e6;border-color:#fb7185;}
+  .hsdItem.urgent{background:#ffedd5;border-color:#fb923c;}
+  .hsdItem.urgent .hsdItemName{color:#9a3412;}
+  .hsdItem.soon{background:#fef3c7;border-color:#f59e0b;}
+  .hsdItemName{font-weight:900;color:#2c663b;font-size:15px;margin-bottom:4px;padding-right:40px;word-break:break-word;}
+  .hsdItemInfo{font-size:12.5px;color:#44594a;font-weight:700;line-height:1.6;}
+  .hsdItemDelete{
+    position:absolute;top:8px;right:8px;background:#ffe4e6;color:#e11d48;
+    border:none;width:28px;height:28px;border-radius:50%;font-weight:900;
+    cursor:pointer;font-family:inherit;
+  }
+  .hsdEmpty{text-align:center;color:#9bbfa5;font-weight:800;padding:30px 10px;line-height:1.8;}
+</style>
+
+<div id="hsdAlertBanner" onclick="openHsdModal()"></div>
+<div id="hsdFloatBtn" onclick="openHsdModal()">📦<span class="hsdBadge" id="hsdBadge" style="display:none;">0</span></div>
+<div id="hsdModal" onclick="if(event.target===this) closeHsdModal()">
+  <div id="hsdModalContent">
+    <div class="hsdModalHeader">
+      <h2>📦 Sản phẩm đã lưu</h2>
+      <button class="hsdCloseBtn" onclick="closeHsdModal()">✕</button>
+    </div>
+    <div id="hsdList"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var STORAGE_KEY='hsd_saved_products_v1';
+  var SOON_PERCENT=30;
+  var URGENT_PERCENT=20;
+
+  function load(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY))||[];}catch(e){return[];}}
+  function saveList(x){localStorage.setItem(STORAGE_KEY,JSON.stringify(x));}
+  function parseVN(s){
+    if(!s)return null;
+    var p=String(s).split('/').map(Number);
+    if(p.length!==3)return null;
+    if(!p[0]||!p[1]||!p[2])return null;
+    return new Date(p[2],p[1]-1,p[0]);
+  }
+  function esc(s){return String(s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+  function percentLeft(nsxStr,hsdStr,today){
+    var nsx=parseVN(nsxStr),hsd=parseVN(hsdStr);
+    if(!nsx||!hsd)return null;
+    nsx.setHours(0,0,0,0);hsd.setHours(0,0,0,0);
+    var t=new Date(today);t.setHours(0,0,0,0);
+    var total=Math.round((hsd-nsx)/86400000)+1;
+    if(total<=0)return null;
+    var remain=Math.round((hsd-t)/86400000)+1;
+    var percent=(remain/total)*100;
+    var expiredDays=remain<=0?Math.abs(remain)+1:0;
+    return{total:total,remain:remain,percent:percent,expiredDays:expiredDays};
+  }
+  function getLevel(info){
+    if(!info)return'unknown';
+    if(info.remain<=0)return'expired';
+    if(info.percent<=URGENT_PERCENT)return'urgent';
+    if(info.percent<=SOON_PERCENT)return'soon';
+    return'safe';
+  }
+
+  var saveBtn=document.createElement('button');
+  saveBtn.id='hsdSaveBtn';
+  saveBtn.type='button';
+  saveBtn.innerText='💾 Lưu sản phẩm này';
+  var resultEl=document.getElementById('result');
+  if(resultEl&&resultEl.parentNode){
+    resultEl.parentNode.insertBefore(saveBtn,resultEl.nextSibling);
+  }
+
+  var pendingData=null;
+  var origShowResult=window.showResult;
+  window.showResult=function(msg,type){
+    origShowResult(msg,type);
+    try{
+      if(type==='ok'||type==='warn'){
+        var nd=document.getElementById('nsx_d').innerText;
+        var nm=document.getElementById('nsx_m').innerText;
+        var ny=document.getElementById('nsx_y').innerText;
+        var hsdStr='';
+        var m=String(msg).match(/HSD là (\d{2}\/\d{2}\/\d{4})/);
+        if(m)hsdStr=m[1];
+        else{
+          var hd=document.getElementById('hsd_d').innerText;
+          var hm=document.getElementById('hsd_m').innerText;
+          var hy=document.getElementById('hsd_y').innerText;
+          if(hd&&hm&&hy)hsdStr=hd+'/'+hm+'/'+hy;
+        }
+        if(nd&&nm&&ny&&hsdStr){
+          pendingData={nsx:nd+'/'+nm+'/'+ny,hsd:hsdStr};
+          saveBtn.innerText='💾 Lưu sản phẩm này';
+          saveBtn.style.display='block';
+          return;
+        }
+      }
+      pendingData=null;
+      saveBtn.style.display='none';
+    }catch(e){console.warn('[HSD]',e);}
+  };
+
+  saveBtn.onclick=function(){
+    if(!pendingData)return;
+    var defName='SP '+new Date().toLocaleString('vi-VN');
+    var name=prompt('Đặt tên cho sản phẩm:',defName);
+    if(name===null)return;
+    var list=load();
+    list.unshift({
+      id:Date.now()+Math.floor(Math.random()*1000),
+      name:(name.trim()||defName),
+      nsx:pendingData.nsx,
+      hsd:pendingData.hsd,
+      savedAt:Date.now()
+    });
+    saveList(list);
+    saveBtn.innerText='✅ Đã lưu!';
+    setTimeout(function(){
+      saveBtn.style.display='none';
+      saveBtn.innerText='💾 Lưu sản phẩm này';
+    },1400);
+    renderBadge();renderAlert();
+    if(document.getElementById('hsdModal').className.indexOf('open')>-1)renderList();
+  };
+
+  window.openHsdModal=function(){
+    document.getElementById('hsdModal').className='open';
+    renderList();
+  };
+  window.closeHsdModal=function(){
+    document.getElementById('hsdModal').className='';
+  };
+
+  function renderList(){
+    var list=load();
+    var box=document.getElementById('hsdList');
+    if(!list.length){
+      box.innerHTML='<div class="hsdEmpty">Chưa có sản phẩm nào 🌱<br><span style="font-size:12px;">Tính HSD xong, bấm "💾 Lưu sản phẩm này" nhé!</span></div>';
+      return;
+    }
+    var today=new Date();
+    var order={expired:0,urgent:1,soon:2,safe:3,unknown:4};
+    var sorted=list.slice().sort(function(a,b){
+      var la=getLevel(percentLeft(a.nsx,a.hsd,today));
+      var lb=getLevel(percentLeft(b.nsx,b.hsd,today));
+      return order[la]-order[lb];
+    });
+    box.innerHTML=sorted.map(function(item){
+      var info=percentLeft(item.nsx,item.hsd,today);
+      var level=getLevel(info);
+      var cls='',status='';
+      if(level==='unknown'){status='⚠️ Không đọc được ngày';}
+      else if(level==='expired'){cls='expired';status='❌ Đã hết hạn '+info.expiredDays+' ngày trước';}
+      else if(level==='urgent'){cls='urgent';status='🚨 RẤT GẤP! Chỉ còn '+info.percent.toFixed(1)+'% (~'+info.remain+' ngày) — cần rút ngay!';}
+      else if(level==='soon'){cls='soon';status='⚠️ Sắp hết: còn '+info.percent.toFixed(1)+'% (~'+info.remain+' ngày)';}
+      else{status='✅ Còn '+info.percent.toFixed(1)+'% (~'+info.remain+' ngày)';}
+      var saveDate=new Date(item.savedAt).toLocaleString('vi-VN');
+      return '<div class="hsdItem '+cls+'">'
+        +'<button class="hsdItemDelete" onclick="hsdDelete('+item.id+')" title="Xoá">✕</button>'
+        +'<div class="hsdItemName">'+esc(item.name)+'</div>'
+        +'<div class="hsdItemInfo">🌱 NSX: '+item.nsx+'<br>⏰ HSD: '+item.hsd+'<br>'+status+'<br>'
+        +'<span style="font-size:11px;color:#9bbfa5;">Đã lưu: '+saveDate+'</span></div></div>';
+    }).join('');
+  }
+
+  window.hsdDelete=function(id){
+    if(!confirm('Xoá sản phẩm này?'))return;
+    saveList(load().filter(function(x){return x.id!==id;}));
+    renderList();renderBadge();renderAlert();
+  };
+
+  function renderBadge(){
+    var list=load();
+    var b=document.getElementById('hsdBadge');
+    if(list.length){b.style.display='flex';b.innerText=list.length;}
+    else{b.style.display='none';}
+  }
+
+  function renderAlert(){
+    var list=load();
+    var today=new Date();
+    var expired=[],urgent=[],soon=[];
+    list.forEach(function(it){
+      var info=percentLeft(it.nsx,it.hsd,today);
+      var level=getLevel(info);
+      if(level==='expired')expired.push(it);
+      else if(level==='urgent')urgent.push(it);
+      else if(level==='soon')soon.push(it);
+    });
+    var banner=document.getElementById('hsdAlertBanner');
+    if(!expired.length&&!urgent.length&&!soon.length){banner.style.display='none';return;}
+    banner.style.display='block';
+    banner.className=(expired.length||urgent.length)?'danger':'';
+    var parts=[];
+    if(expired.length)parts.push('❌ '+expired.length+' SP đã hết hạn');
+    if(urgent.length)parts.push('🚨 '+urgent.length+' SP còn < '+URGENT_PERCENT+'%');
+    if(soon.length)parts.push('⚠️ '+soon.length+' SP còn < '+SOON_PERCENT+'%');
+    banner.innerText=parts.join(' • ')+' — Bấm xem 📦';
+  }
+
+  renderBadge();renderAlert();
+  setInterval(renderAlert,60000);
+})();
+</script>
+<!-- ============ HẾT PHẦN THÊM MỚI ============ -->
 </body>
 </html>
